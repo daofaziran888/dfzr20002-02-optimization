@@ -49,8 +49,8 @@ class FurnitureService(BaseModuleService):
                     return False, f"展位 {remark} 设计方案尚未审核，家具配置不可确认"
         return True, ""
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = self.related_rows("furniture")
         if rows:
             base["total_furniture_count"] = sum(

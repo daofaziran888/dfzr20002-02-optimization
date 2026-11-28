@@ -37,12 +37,32 @@ export interface ExhibitionHistory {
   schedule_conflicts: Record<string, unknown>[]
 }
 
+export interface VenueAreaQuota {
+  venue_area: number
+  total_booth_area: number
+  net_occupied_area: number
+  available_area: number
+  remaining: number
+  confirmed_booths: Record<string, unknown>[]
+  withdrawn_booths: Record<string, unknown>[]
+  pending_booths: Record<string, unknown>[]
+  unverifiable_booths: {
+    booth_id: number
+    booth_no: string
+    raw_size: string | number
+    status: string
+    reason: string
+  }[]
+  unverifiable_count: number
+  booths: Record<string, unknown>[]
+}
+
 export interface QuotaItem {
   venue: string
   venue_id: number
   ok: boolean
   reason: string
-  quota: Record<string, unknown>
+  quota: VenueAreaQuota
 }
 
 export interface PowerQuotaItem {

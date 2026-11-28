@@ -14,46 +14,171 @@ from app.store import store
 
 # ---------- 面积配额 ----------
 
+def parse_area(raw: Any) -> float | None:
+    """把「18」「18㎡」「18 平米」等面积文本解析成净占用面积（㎡）。
+
+    无法解释（非数字、空值）的记录返回 None，由调用方单列处理，
+    不再像旧逻辑那样静默按 0 ㎡ 混入合计。
+    """
+    if raw is None:
+        return None
+    try:
+        text = str(raw).replace("平米", "").replace("㎡", "").strip()
+        if not text:
+            return None
+        area = float(text)
+    except (ValueError, AttributeError):
+        return None
+    return area if area >= 0 else None
+
+
 def check_venue_capacity(vendor_id: int) -> dict[str, Any]:
-    """校验场馆内所有展位面积之和是否超过场馆可用面积。"""
+    """按净占用口径核算场馆面积配额。
+
+    口径约定：
+    - 只有「已确认」展位计入净占用面积（net_occupied_area）；
+    - 「已撤回」展位让出的面积可重新分配，不计入占用；
+    - 草稿/待确认展位尚未获得面积，不提前占用配额；
+    - 尺寸无法解释（parse_area 返回 None）的记录单列进
+      unverifiable_booths，绝不按 0 ㎡ 混入合计，供策展人改正；
+    - 同一展期已确认展位合计不得超过场馆可用面积上限。
+    """
     venue = store.find("venue", vendor_id)
     if venue is None:
         return {"ok": False, "reason": f"场馆 {vendor_id} 不存在", "quota": {}}
 
-    try:
-        venue_area = float(str(venue.get("可用面积", "0")).replace("平米", "").replace("㎡", "").strip())
-    except (ValueError, AttributeError):
+    venue_area = parse_area(venue.get("可用面积"))
+    if venue_area is None:
         return {"ok": False, "reason": "场馆可用面积字段无法解析", "quota": {}}
 
-    all_booths = store.rows("booth")
-    booth_areas: list[dict[str, Any]] = []
-    total_booth_area = 0.0
-    for booth in all_booths:
-        booth_venue = str(booth.get("所属区域", ""))
-        if booth_venue == str(venue.get("场馆名称", "")):
-            try:
-                area_text = str(booth.get("面积尺寸", "0")).replace("平米", "").replace("㎡", "").strip()
-                area = float(area_text)
-            except (ValueError, AttributeError):
-                area = 0.0
-            total_booth_area += area
-            booth_areas.append({
-                "booth_no": booth.get("展位编号", ""),
-                "area": area,
-                "status": booth.get("status", ""),
-            })
+    venue_name = str(venue.get("场馆名称", ""))
+    confirmed_booths: list[dict[str, Any]] = []
+    withdrawn_booths: list[dict[str, Any]] = []
+    pending_booths: list[dict[str, Any]] = []
+    unverifiable_booths: list[dict[str, Any]] = []
+    net_occupied_area = 0.0
 
-    ok = total_booth_area <= venue_area
-    return {
-        "ok": ok,
-        "reason": "" if ok else f"展位总面积 {total_booth_area}㎡ 超过场馆可用面积 {venue_area}㎡",
-        "quota": {
-            "venue_area": venue_area,
-            "total_booth_area": total_booth_area,
-            "remaining": venue_area - total_booth_area,
-            "booths": booth_areas,
-        },
+    for booth in store.rows("booth"):
+        if str(booth.get("所属区域", "")) != venue_name:
+            continue
+        status = str(booth.get("status", ""))
+        area = parse_area(booth.get("面积尺寸"))
+        if area is None:
+            # 尺寸无法解释：单列，不参与任何面积合计
+            unverifiable_booths.append({
+                "booth_id": booth.get("id"),
+                "booth_no": booth.get("展位编号", ""),
+                "raw_size": booth.get("面积尺寸", ""),
+                "status": status,
+                "reason": "面积尺寸无法解释，请策展人核对改正",
+            })
+            continue
+
+        item = {
+            "booth_id": booth.get("id"),
+            "booth_no": booth.get("展位编号", ""),
+            "area": area,
+            "status": status,
+        }
+        if status == "已确认":
+            confirmed_booths.append(item)
+            net_occupied_area += area
+        elif status == "已撤回":
+            # 撤回让出的面积回到可分配池，只登记不计数
+            withdrawn_booths.append(item)
+        else:
+            pending_booths.append(item)
+
+    # 可用面积 = 场馆上限 - 已确认净占用（撤回/待确认均不占额）
+    available_area = venue_area - net_occupied_area
+    ok = net_occupied_area <= venue_area
+    reason = ""
+    if not ok:
+        reason = (f"已确认展位净占用 {net_occupied_area}㎡ 超过场馆可用面积 "
+                  f"{venue_area}㎡")
+    elif unverifiable_booths:
+        reason = (f"有 {len(unverifiable_booths)} 条展位尺寸无法解释，"
+                  f"已单列待策展人改正，未计入净占用")
+
+    quota = {
+        "venue_area": venue_area,
+        # 兼容旧字段：total_booth_area / remaining 改按净占用口径给出
+        "total_booth_area": net_occupied_area,
+        "net_occupied_area": net_occupied_area,
+        "available_area": available_area,
+        "remaining": available_area,
+        "confirmed_booths": confirmed_booths,
+        "withdrawn_booths": withdrawn_booths,
+        "pending_booths": pending_booths,
+        "unverifiable_booths": unverifiable_booths,
+        "unverifiable_count": len(unverifiable_booths),
+        # 兼容旧前端/旧测试的 booths 清单
+        "booths": confirmed_booths,
     }
+    return {"ok": ok, "reason": reason, "quota": quota}
+
+
+def check_booth_confirm_quota(booth_id: int) -> dict[str, Any]:
+    """展位确认前的配额门禁：确认动作必须与场馆面积配额联动。
+
+    - 尺寸无法解释的展位不允许确认（先由策展人改正尺寸）；
+    - 按净占用口径试算：本展位确认后已确认合计不得超过场馆上限；
+    - 两位策展人同时点确认时，先通过门禁者获得面积，后者因
+      剩余面积不足被拒，避免确认与配额冲突。
+    """
+    booth = store.find("booth", booth_id)
+    if booth is None:
+        return {"ok": False, "reason": f"展位 {booth_id} 不存在", "quota": {}}
+
+    booth_no = str(booth.get("展位编号", ""))
+    booth_area = parse_area(booth.get("面积尺寸"))
+    if booth_area is None:
+        return {
+            "ok": False,
+            "reason": f"展位 {booth_no} 的面积尺寸「{booth.get('面积尺寸', '')}」"
+                      f"无法解释，请先核对改正后再确认",
+            "quota": {},
+        }
+
+    venue_name = str(booth.get("所属区域", ""))
+    venue = next(
+        (v for v in store.rows("venue")
+         if str(v.get("场馆名称", "")) == venue_name),
+        None,
+    )
+    if venue is None:
+        return {
+            "ok": False,
+            "reason": f"展位 {booth_no} 所属场馆 {venue_name} 不存在",
+            "quota": {},
+        }
+
+    capacity = check_venue_capacity(int(venue.get("id", 0)))
+    quota = capacity.get("quota", {})
+    # 已确认的展位重复确认时不重复占用面积
+    already_confirmed = str(booth.get("status", "")) == "已确认"
+    occupied = float(quota.get("net_occupied_area", 0.0))
+    projected = occupied if already_confirmed else occupied + booth_area
+    available = float(quota.get("available_area", 0.0))
+    venue_area = float(quota.get("venue_area", 0.0))
+
+    ok = projected <= venue_area
+    result_quota = {
+        "venue": venue_name,
+        "venue_area": venue_area,
+        "net_occupied_area": occupied,
+        "booth_area": booth_area,
+        "available_area": available,
+        "projected_occupied_area": projected,
+        "remaining_after_confirm": venue_area - projected,
+    }
+    if not ok:
+        reason = (f"展位 {booth_no} 需 {booth_area}㎡，场馆「{venue_name}」"
+                  f"净占用口径下仅剩 {available}㎡ 可分配，确认将使合计 "
+                  f"{projected}㎡ 超过上限 {venue_area}㎡")
+    else:
+        reason = ""
+    return {"ok": ok, "reason": reason, "quota": result_quota}
 
 
 # ---------- 功率配额 ----------

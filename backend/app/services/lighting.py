@@ -59,8 +59,8 @@ class LightingService(BaseModuleService):
                     return False, f"展位 {booth_no} 用电回路尚未核验，灯光方案不可确认"
         return True, ""
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = store.rows(self.MODULE)
         booth_linked = sum(
             1 for r in rows if "BOOT-" in str(r.get("备注说明", ""))

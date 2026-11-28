@@ -41,8 +41,8 @@ class DesignService(BaseModuleService):
                 return False, "设计方案不存在"
         return True, ""
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = store.rows(self.MODULE)
         confirmed = [r for r in rows if r.get("status") == "已确认"]
         total_load = sum(

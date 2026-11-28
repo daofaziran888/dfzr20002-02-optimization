@@ -23,8 +23,8 @@ class ScheduleService(BaseModuleService):
             errors.append("布展起始日期必须早于撤展截止日期")
         return errors
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = self.related_rows("schedule")
         confirmed = [r for r in rows if r.get("status") == "已确认"]
         base["active_schedules"] = len(confirmed)

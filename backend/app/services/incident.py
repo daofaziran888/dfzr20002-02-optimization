@@ -39,8 +39,8 @@ class IncidentService(BaseModuleService):
                 return False, "事件记录不存在"
         return True, ""
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = self.related_rows("incident")
         by_type: dict[str, int] = {}
         for r in rows:

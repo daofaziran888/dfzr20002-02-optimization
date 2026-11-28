@@ -37,8 +37,8 @@ class ConstructionService(BaseModuleService):
                 return False, result["reason"]
         return True, ""
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = store.rows(self.MODULE)
         cycle = exhibition.detect_cycle(rows)
         order = exhibition.build_dag_order(rows) if cycle is None else []

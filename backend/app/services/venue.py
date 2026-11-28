@@ -40,9 +40,25 @@ class VenueService(BaseModuleService):
                 return False, area_result["reason"]
         return True, ""
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = store.rows(self.MODULE)
         confirmed = [r for r in rows if r.get("status") == "已确认"]
         base["confirmed_venues"] = [{r.get("场馆名称"): r.get("可用面积")} for r in confirmed]
+        # 场馆规划给展位确认提供按净占用口径计算的可用面积结论
+        area_conclusions: list[dict[str, Any]] = []
+        for venue in rows:
+            result = exhibition.check_venue_capacity(int(venue.get("id", 0)))
+            quota = result.get("quota") or {}
+            area_conclusions.append({
+                "venue_id": venue.get("id"),
+                "venue": venue.get("场馆名称"),
+                "venue_area": quota.get("venue_area"),
+                "net_occupied_area": quota.get("net_occupied_area"),
+                "available_area": quota.get("available_area"),
+                "unverifiable_count": quota.get("unverifiable_count", 0),
+                "ok": result.get("ok"),
+                "reason": result.get("reason", ""),
+            })
+        base["area_conclusions"] = area_conclusions
         return base

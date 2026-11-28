@@ -40,8 +40,8 @@ class MaterialService(BaseModuleService):
                 return False, "暂无已审核的设计方案，不能领用物料"
         return True, ""
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = self.related_rows("material")
         total_qty = sum(int(str(r.get("配额数量", "0")).strip()) for r in rows)
         base["total_quota"] = total_qty

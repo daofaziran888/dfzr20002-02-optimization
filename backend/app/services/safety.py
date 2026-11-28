@@ -25,8 +25,8 @@ class SafetyService(BaseModuleService):
             errors.append(f"隐患等级 {level} 不在允许范围（轻微/一般/严重/重大）")
         return errors
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = store.rows(self.MODULE)
         by_level: dict[str, int] = {}
         for row in rows:

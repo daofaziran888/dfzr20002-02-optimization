@@ -35,8 +35,8 @@ class HandoverService(BaseModuleService):
                 return False, validation["reason"]
         return True, ""
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = store.rows(self.MODULE)
         confirmed = sum(1 for r in rows if r.get("status") == "已确认")
         base["completed_handovers"] = confirmed

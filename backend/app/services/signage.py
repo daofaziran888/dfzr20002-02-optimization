@@ -34,8 +34,8 @@ class SignageService(BaseModuleService):
                 return False, "导视牌不存在"
         return True, ""
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = store.rows(self.MODULE)
         by_type: dict[str, int] = {}
         for r in rows:

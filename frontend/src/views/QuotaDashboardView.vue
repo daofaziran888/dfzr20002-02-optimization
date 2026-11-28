@@ -40,9 +40,9 @@
       <p v-else class="empty-state">加载中...</p>
     </section>
 
-    <!-- 面积配额 -->
+    <!-- 面积配额（按净占用口径） -->
     <section class="dashboard-card">
-      <h4>面积配额</h4>
+      <h4>面积配额（净占用口径）</h4>
       <div v-if="summary?.area_quotas?.length">
         <article
           v-for="item in summary.area_quotas"
@@ -50,13 +50,32 @@
           class="quota-item"
           :class="item.ok ? 'quota-ok' : 'quota-warn'"
         >
-          <strong>{{ item.venue }}</strong>
-          <span v-if="(item.quota as Record<string, number>).venue_area">
-            可用 {{ (item.quota as Record<string, number>).venue_area }}㎡
-            | 已用 {{ (item.quota as Record<string, number>).total_booth_area }}㎡
-            | 剩余 {{ (item.quota as Record<string, number>).remaining }}㎡
-          </span>
-          <span v-if="!item.ok" class="text-danger">⚠ {{ item.reason }}</span>
+          <div class="quota-main">
+            <strong>{{ item.venue }}</strong>
+            <span>
+              可用上限 {{ item.quota.venue_area }}㎡
+              | 净占用（已确认）{{ item.quota.net_occupied_area }}㎡
+              | 可再分配 {{ item.quota.available_area }}㎡
+            </span>
+            <span v-if="!item.ok" class="text-danger">⚠ {{ item.reason }}</span>
+            <span v-else-if="item.reason" class="text-warn">⚠ {{ item.reason }}</span>
+          </div>
+          <div class="quota-detail">
+            <span v-if="item.quota.withdrawn_booths?.length" class="tag tag-released">
+              撤回已释放 {{ item.quota.withdrawn_booths.length }} 笔
+            </span>
+            <span v-if="item.quota.pending_booths?.length" class="tag tag-pending">
+              待确认未占额 {{ item.quota.pending_booths.length }} 笔
+            </span>
+            <span v-if="item.quota.unverifiable_count" class="tag tag-danger">
+              尺寸待核对 {{ item.quota.unverifiable_count }} 笔
+            </span>
+          </div>
+          <ul v-if="item.quota.unverifiable_booths?.length" class="unverifiable-list">
+            <li v-for="u in item.quota.unverifiable_booths" :key="u.booth_id">
+              展位 {{ u.booth_no }}：尺寸「{{ u.raw_size }}」无法解释（{{ u.status }}）— {{ u.reason }}
+            </li>
+          </ul>
         </article>
       </div>
       <p v-else class="empty-state">暂无面积配额数据</p>
@@ -161,4 +180,18 @@ onMounted(refresh)
 }
 .text-success { color: #52c41a; }
 .text-danger { color: #f5222d; }
+.text-warn { color: #fa8c16; }
+.quota-main { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.quota-detail { display: flex; gap: 8px; flex-wrap: wrap; }
+.tag {
+  font-size: 12px; padding: 2px 8px; border-radius: 4px;
+  background: #e8f4ff; color: #1890ff; white-space: nowrap;
+}
+.tag-released { background: #f6ffed; color: #52c41a; }
+.tag-pending { background: #e8f4ff; color: #1890ff; }
+.tag-danger { background: #fff1f0; color: #f5222d; }
+.unverifiable-list {
+  flex-basis: 100%; margin: 6px 0 0; padding-left: 18px;
+  font-size: 12px; color: #f5222d;
+}
 </style>

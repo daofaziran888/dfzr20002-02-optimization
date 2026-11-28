@@ -41,8 +41,8 @@ class TransportService(BaseModuleService):
                 return False, conflicts[0]["conflict"]
         return True, ""
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = self.related_rows("transport")
         methods: dict[str, int] = {}
         for r in rows:

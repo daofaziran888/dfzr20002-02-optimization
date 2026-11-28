@@ -114,8 +114,16 @@ class BaseModuleService:
         store.rebuild_indices()
         return entry, f"{self.ENTITY}已{action}"
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        """返回本模块的状态统计与业务对象，供其他模块读取。"""
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        """返回本模块的状态统计与业务对象，供其他模块读取。
+
+        RELATED_MODULES 可能互相引用（如 booth ↔ electrical），
+        用 _visited 沿调用链去重，避免快照递归成环。
+        """
+        visited = frozenset() if _visited is None else _visited
+        if self.MODULE in visited:
+            return {"module": self.MODULE, "recursive_reference": True}
+        visited = visited | {self.MODULE}
         rows = store.rows(self.MODULE)
         by_status = {
             status: sum(1 for row in rows if row.get("status") == status)
@@ -129,12 +137,12 @@ class BaseModuleService:
             "by_status": by_status,
             "abnormal": sum(1 for row in rows if row.get("abnormal")),
         }
-        # 合并关联模块快照
+        # 合并关联模块快照（遇到环上的模块只回传占位结论）
         for related in self.RELATED_MODULES:
             from app.services import service_for
             svc = service_for(related)
             if svc:
-                result[f"related_{related}"] = svc.domain_snapshot()
+                result[f"related_{related}"] = svc.domain_snapshot(_visited=visited)
         return result
 
     def related_rows(self, module: str) -> list[dict[str, Any]]:

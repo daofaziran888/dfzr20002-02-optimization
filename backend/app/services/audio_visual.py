@@ -54,8 +54,8 @@ class AudioVisualService(BaseModuleService):
                     return False, f"展位 {booth_no} 用电回路尚未核验，影音设备不可调试"
         return True, ""
 
-    def domain_snapshot(self) -> dict[str, Any]:
-        base = super().domain_snapshot()
+    def domain_snapshot(self, _visited: frozenset[str] | None = None) -> dict[str, Any]:
+        base = super().domain_snapshot(_visited=_visited)
         rows = store.rows(self.MODULE)
         booth_linked = sum(1 for r in rows if "BOOT-" in str(r.get("备注说明", "")))
         base["booth_linked_count"] = booth_linked
